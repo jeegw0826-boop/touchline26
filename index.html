@@ -84,10 +84,8 @@ main{padding:10px}
 <script>
 "use strict";
 
-/* JSONBin 연결 설정 */
-const JSONBIN_ID="6af59f83ac6210605a8213a5";
-const JSONBIN_URL=
-"https://api.jsonbin.io/v3/b/"+JSONBIN_ID+"/latest";
+/* GitHub 선수 데이터 연결 */
+const PLAYER_DATA_URL="./data/players.json";
 
 const $=id=>document.getElementById(id);
 const random=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
@@ -238,7 +236,7 @@ t.gf=0;t.ga=0;t.points=0;
 function playerValue(ovr,age){
 return Math.round(Math.max(
 100000,
-Math.pow(ovr/75,7)13000000
+Math.pow(ovr/75,7)*13000000*
 Math.max(.3,(35-age)/13)
 ));
 }
@@ -890,7 +888,7 @@ slotScreen=true;
 render();
 }
 
-/* 새 게임: JSONBin에서 선수단 자동 불러오기 */
+/* 새 게임: GitHub의 data/players.json에서 선수단 자동 불러오기 */
 async function newGame(n){
 if(slotData(n)&&!confirm(
 `슬롯 ${n}의 데이터를 덮어쓸까요?`
@@ -900,14 +898,8 @@ slot=n;
 initialize();
 
 try{
-if(JSONBIN_ID==="여기에_BIN_ID_입력"){
-throw new Error(
-"코드 맨 위의 JSONBIN_ID에 실제 Bin ID를 입력해야 합니다."
-);
-}
-
 const response=await fetch(
-JSONBIN_URL,
+PLAYER_DATA_URL,
 {cache:"no-store"}
 );
 
@@ -915,12 +907,11 @@ if(!response.ok){
 throw new Error("HTTP "+response.status);
 }
 
-const result=await response.json();
-const data=result.record;
+const data=await response.json();
 const list=Array.isArray(data)?data:data?.players;
 
 if(!Array.isArray(list)){
-throw new Error("JSONBin에 players 배열이 없습니다.");
+throw new Error("players.json에 선수 배열이 없습니다.");
 }
 
 let count=0;
@@ -963,7 +954,7 @@ value:x.value,
 contract:x.contract,
 stats:x.stats,
 generated:false,
-source:x.source||"JSONBin 실제 선수단"
+source:x.source||"GitHub 실제 선수단"
 }));
 
 count++;
@@ -976,7 +967,7 @@ console.warn("등록되지 않은 선수:",skipped);
 
 }catch(error){
 alert(
-"JSONBin 선수 데이터를 불러오지 못했습니다.\n"+
+"GitHub 선수 데이터를 불러오지 못했습니다.\n"+
 error.message
 );
 }
@@ -1299,7 +1290,7 @@ return `
 <div class="card">
 <h2>감독 커리어 시작</h2>
 <p class="notice">
-실제 선수단은 JSONBin에서 불러옵니다.
+실제 선수단은 GitHub의 data/players.json에서 불러옵니다.
 데이터가 없는 구단에는 가상 선수를 자동으로 넣지 않습니다.
 </p>
 <div class="row">
@@ -1689,13 +1680,13 @@ return `
 </div>
 
 <p class="notice">
-현재 선수단은 JSONBin에서 불러오며,
+현재 선수단은 GitHub의 data/players.json에서 불러오며,
 등록되지 않은 구단에는 가상 선수를 자동으로 채우지 않습니다.
 </p>
 
 <button onclick="openImport()">선수단 JSON 파일 직접 불러오기</button>
 
-<h3>JSONBin 데이터 형식</h3>
+<h3>선수 데이터 형식</h3>
 <pre>{
   "players": [
     {
