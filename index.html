@@ -197,7 +197,7 @@ const YOUTH_SURNAMES=[
 const YOUTH_NAMES=[
 "민준","도윤","서준","지호","현우","준혁","지훈",
 "승민","태현","시우","도현","준서","우진","성민",
-"재윤","민재"
+"재윤"
 ];
 
 let G=null;
@@ -251,7 +251,7 @@ t.gf=0;t.ga=0;t.points=0;
 function playerValue(ovr,age){
 return Math.round(Math.max(
 100000,
-Math.pow(ovr/75,7)*13000000*
+Math.pow(ovr/75,7)13000000
 Math.max(.3,(35-age)/13)
 ));
 }
@@ -932,17 +932,96 @@ slotScreen=true;
 render();
 }
 
-function newGame(n){
-if(slotData(n)&&!confirm(
-`슬롯 ${n}의 데이터를 덮어쓸까요?`
-))return;
+/* =====================================================
+   수정된 부분: 새 게임 시작 시 GitHub 선수단 자동 불러오기
 
-slot=n;
-initialize();
-slotScreen=false;
-page="start";
-render();
+   기존:
+   function newGame(n){ ... }
+
+   변경:
+   async function newGame(n){ ... }
+
+   GitHub Pages의
+   ./data/players.json 파일을 읽어
+   실제 선수들을 새 커리어에 등록한다.
+===================================================== */
+
+async function newGame(n){
+  if(slotData(n)&&!confirm(
+    `슬롯 ${n}의 데이터를 덮어쓸까요?`
+  ))return;
+
+  slot=n;
+  initialize();
+
+  try{
+    const response=await fetch(
+      "./data/players.json",
+      {cache:"no-store"}
+    );
+
+    if(!response.ok){
+      throw new Error("HTTP "+response.status);
+    }
+
+    const data=await response.json();
+    const list=Array.isArray(data)?data:data.players;
+
+    if(!Array.isArray(list)){
+      throw new Error("선수 데이터 형식 오류");
+    }
+
+    let count=0;
+
+    for(const x of list){
+      const club=G.teams.find(t=>
+        t.name===x.club &&
+        (!x.league||t.league===x.league)
+      );
+
+      if(!club)continue;
+
+      const name=String(
+        x.name_ko||x.name||""
+      ).trim();
+
+      if(!name)continue;
+
+      if(squad(club.id).some(p=>
+        p.name===name
+      ))continue;
+
+      G.players.push(createPlayer(club,{
+        name,
+        originalName:x.name||name,
+        age:x.age,
+        pos:x.position||x.pos,
+        ovr:x.ovr,
+        value:x.value,
+        contract:x.contract,
+        stats:x.stats,
+        generated:false,
+        source:x.source||"실제 선수단"
+      }));
+
+      count++;
+    }
+
+    notify(`실제 선수 ${count}명 불러오기 완료`);
+
+  }catch(error){
+    alert(
+      "선수 데이터를 불러오지 못했습니다.\n"+
+      error.message
+    );
+  }
+
+  slotScreen=false;
+  page="start";
+  render();
 }
+
+/* =================== 저장 슬롯 나머지 기능 =================== */
 
 function loadGame(n){
 const data=slotData(n);
