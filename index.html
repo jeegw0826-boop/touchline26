@@ -262,50 +262,61 @@ pre{
 </style>
 </head>
 <body>
+
 <div class="layout">
 <aside>
-<div class="logo">⚽ TOUCHLINE 26</div>
-<div id="identity" class="muted"></div>
-<nav id="nav"></nav>
+  <div class="logo">⚽ TOUCHLINE 26</div>
+  <div id="identity" class="muted"></div>
+  <nav id="nav"></nav>
 </aside>
+
 <main>
-<div class="row between">
-<h2 id="heading">커리어</h2>
-<div class="row">
-<button class="alt" onclick="saveGame()">저장</button>
-<button class="alt" onclick="showSlots()">저장 목록</button>
-<button class="alt" onclick="exportGame()">백업</button>
-</div>
-</div>
-<div id="app"></div>
+  <div class="row between">
+    <h2 id="heading">커리어</h2>
+    <div class="row">
+      <button class="alt" onclick="saveGame()">저장</button>
+      <button class="alt" onclick="showSlots()">저장 목록</button>
+      <button class="alt" onclick="exportGame()">백업</button>
+    </div>
+  </div>
+  <div id="app"></div>
 </main>
 </div>
+
 <div id="ghost"></div>
 <div id="toast"></div>
-<input id="jsonFile" type="file" accept=".json" hidden onchange="importJSON(event)">
+
+<input
+  id="jsonFile"
+  type="file"
+  accept=".json"
+  hidden
+  onchange="importJSON(event)"
+>
 
 <script>
 "use strict";
 
 /* =========================================
    TOUCHLINE 26
-   GitHub 선수 데이터 + 재계약 시스템
-   감독 평점 / 연승·연패 / 부임 보호기간
+   통합 버전
+
+   - 21개 리그
+   - GitHub 실제 선수 데이터
+   - 3개 저장 슬롯
+   - 전술 및 선발
+   - 리그와 컵대회
+   - 선수 이적
+   - 자유계약 선수
+   - 선수 재계약
+   - 감독 재계약
+   - 감독 평점 및 경질
+   - 부임 후 12경기 보호
+   - AI 구단 자동 재계약
+   - AI 구단 자동 이적시장
 ========================================= */
 
 const PLAYER_DATA_URL="./data/players.json";
-
-/*
-  감독 시스템 규칙
-
-  1. 부임 후 리그 12경기 보호
-  2. 보호기간 중 평점 0 미만이면 경질
-  3. 보호기간 종료 후 평점 40 미만이면 경질
-  4. 승리 시 +2.0부터 최대 +4.0
-  5. 패배 시 -2.0부터 최대 -4.0
-  6. 무승부는 평점 유지, 연속 기록 초기화
-  7. 컵대회는 보호기간 경기 수에 포함하지 않음
-*/
 
 const MANAGER_GRACE_MATCHES=12;
 const MANAGER_FIRING_RATING=40;
@@ -313,12 +324,12 @@ const MANAGER_FIRING_RATING=40;
 const $=id=>document.getElementById(id);
 
 const random=(a,b)=>
-Math.floor(Math.random()*(b-a+1))+a;
+  Math.floor(Math.random()*(b-a+1))+a;
 
 const pick=a=>a[random(0,a.length-1)];
 
 const money=n=>
-"$"+Math.round(n||0).toLocaleString("en-US");
+  "$"+Math.round(n||0).toLocaleString("en-US");
 
 const escapeHTML=s=>
 String(s??"").replace(/[&<>"']/g,c=>({
@@ -426,13 +437,17 @@ let G=null;
 let slot=0;
 let slotScreen=true;
 let page="home";
+
 let selectedPlayer=null;
 let drag=null;
+
 let sortField="ovr";
 let sortAscending=false;
+
 let playerQuery="";
 let selectedLeague="";
 let selectedClub="";
+
 let contractPlayerId=null;
 let negotiationResult=null;
 let managerNegotiationResult=null;
@@ -514,11 +529,12 @@ function makeStats(pos,ovr){
     "defending":"passing";
 
   x[main]=ovr;
+
   return x;
 }
 
 /* =========================================
-   감독 평점 및 보호기간
+   감독 평점
 ========================================= */
 
 function ratingText(){
@@ -533,39 +549,15 @@ function graceRemaining(){
 }
 
 function isManagerProtected(){
-  return G.appointmentMatches<
+  return G.appointmentMatches<=
     MANAGER_GRACE_MATCHES;
 }
-
-/*
-  새 구단 부임 시 기록 초기화
-*/
 
 function resetManagerPerformance(){
   G.appointmentMatches=0;
   G.winStreak=0;
   G.lossStreak=0;
 }
-
-/*
-  승리:
-  1연승 +2.0
-  2연승 +2.5
-  3연승 +3.0
-  4연승 +3.5
-  5연승 이상 +4.0
-
-  패배:
-  1연패 -2.0
-  2연패 -2.5
-  3연패 -3.0
-  4연패 -3.5
-  5연패 이상 -4.0
-
-  무승부:
-  평점 변화 없음
-  연승/연패 기록 초기화
-*/
 
 function updateManagerRating(goalDifference){
   let change=0;
@@ -593,34 +585,20 @@ function updateManagerRating(goalDifference){
     G.lossStreak=0;
   }
 
-  /*
-    음수 평점 허용:
-    보호기간 중 0점 미만 경질 규칙 적용
-  */
-
-  G.rating=Math.max(
-    -100,
-    Math.min(
-      100,
-      Math.round(
-        (G.rating+change)*10
-      )/10
-    )
+  // 상한 100점, 하한 제한 없음
+  G.rating=Math.min(
+    100,
+    Math.round((G.rating+change)*10)/10
   );
 
-  /*
-    리그 경기만 부임 경기 수에 포함
-  */
-
+  // 리그 경기만 보호기간 계산
   G.appointmentMatches++;
 
   return change;
 }
 
 function managerStatusText(){
-  if(G.fired){
-    return "감독직 종료";
-  }
+  if(G.fired)return "감독직 종료";
 
   if(isManagerProtected()){
     return "부임 보호기간";
@@ -630,7 +608,7 @@ function managerStatusText(){
 }
 
 /* =========================================
-   선수 연봉 및 계약 시스템
+   연봉 및 선수 생성
 ========================================= */
 
 function calculateWage(ovr,age,value){
@@ -681,20 +659,18 @@ function createPlayer(t,data){
     40,Math.min(99,Number(data.ovr)||65)
   );
 
-  const value=
-    Number(data.value)>0?
+  const value=Number(data.value)>0?
     Number(data.value):
     playerValue(ovr,age);
 
   const contract=
-    Number.isFinite(Number(data.contract))&&
     data.contract!==undefined&&
-    data.contract!==null?
+    data.contract!==null&&
+    Number.isFinite(Number(data.contract))?
     Math.max(0,Math.floor(Number(data.contract))):
     3;
 
-  const wage=
-    Number(data.wage)>0?
+  const wage=Number(data.wage)>0?
     Number(data.wage):
     calculateWage(ovr,age,value);
 
@@ -718,7 +694,7 @@ function createPlayer(t,data){
 }
 
 /* =========================================
-   기존 저장 데이터 호환
+   저장 데이터 호환
 ========================================= */
 
 function normalizeSave(){
@@ -729,6 +705,9 @@ function normalizeSave(){
   G.transfers=Array.isArray(G.transfers)?G.transfers:[];
   G.results=Array.isArray(G.results)?G.results:[];
   G.players=Array.isArray(G.players)?G.players:[];
+  G.teams=Array.isArray(G.teams)?G.teams:[];
+  G.fixtures=Array.isArray(G.fixtures)?G.fixtures:[];
+  G.cups=Array.isArray(G.cups)?G.cups:[];
 
   G.rating=Number.isFinite(Number(G.rating))?
     Number(G.rating):65;
@@ -739,6 +718,7 @@ function normalizeSave(){
     Math.max(0,Number(G.contract)):3;
 
   G.fired=!!G.fired;
+  G.firingReason=G.firingReason||"";
 
   G.managerContractHistory=
     Array.isArray(G.managerContractHistory)?
@@ -748,71 +728,30 @@ function normalizeSave(){
     Array.isArray(G.contractHistory)?
     G.contractHistory:[];
 
-  G.firingReason=G.firingReason||"";
-
-  /*
-    기존 세이브에 없는 감독 기록 추가
-
-    이미 진행한 현재 구단의 리그 경기를
-    부임 경기 수의 초기값으로 사용
-  */
+  G.aiTransferHistory=
+    Array.isArray(G.aiTransferHistory)?
+    G.aiTransferHistory:[];
 
   if(!Number.isFinite(Number(G.appointmentMatches))){
-    const played=G.fixtures?.filter(f=>
+    G.appointmentMatches=G.fixtures.filter(f=>
       f.played&&
       (f.home===G.club||f.away===G.club)
-    ).length||0;
-
-    G.appointmentMatches=played;
+    ).length;
   }
 
   G.appointmentMatches=Math.max(
-    0,
-    Math.floor(G.appointmentMatches)
+    0,Math.floor(G.appointmentMatches)
   );
 
-  if(!Number.isFinite(Number(G.winStreak))){
-    G.winStreak=0;
-  }
+  G.winStreak=Number.isFinite(Number(G.winStreak))?
+    Math.max(0,Math.floor(G.winStreak)):0;
 
-  if(!Number.isFinite(Number(G.lossStreak))){
-    G.lossStreak=0;
-  }
-
-  G.winStreak=Math.max(
-    0,Math.floor(G.winStreak)
-  );
-
-  G.lossStreak=Math.max(
-    0,Math.floor(G.lossStreak)
-  );
-
-  /*
-    기존 세이브도 새 경질 규칙 적용
-  */
-
-  if(!G.fired){
-    if(isManagerProtected()){
-      if(G.rating<0){
-        G.fired=true;
-        G.contract=0;
-        G.firingReason=
-          "부임 보호기간 중 감독 평점이 0점 미만으로 하락했습니다.";
-      }
-    }else if(G.rating<40){
-      G.fired=true;
-      G.contract=0;
-      G.firingReason=
-        "감독 평점이 40점 미만으로 하락했습니다.";
-    }
-  }
+  G.lossStreak=Number.isFinite(Number(G.lossStreak))?
+    Math.max(0,Math.floor(G.lossStreak)):0;
 
   for(const p of G.players){
-    if(!Number.isFinite(Number(p.contract))){
-      p.contract=3;
-    }else{
-      p.contract=Math.max(0,Number(p.contract));
-    }
+    p.contract=Number.isFinite(Number(p.contract))?
+      Math.max(0,Number(p.contract)):3;
 
     if(!Number.isFinite(Number(p.wage))||
        Number(p.wage)<=0){
@@ -821,25 +760,23 @@ function normalizeSave(){
       );
     }
 
-    if(p.team===undefined){
-      p.team=null;
-    }
+    if(p.team===undefined)p.team=null;
 
-    if(!Number.isFinite(Number(p.negotiationAttempts))){
-      p.negotiationAttempts=0;
-    }
+    p.negotiationAttempts=
+      Number.isFinite(Number(p.negotiationAttempts))?
+      Number(p.negotiationAttempts):0;
 
-    if(!Number.isFinite(Number(p.negotiationYear))){
-      p.negotiationYear=G.year;
-    }
-  }
-
-  if(!Array.isArray(G.lineup)){
-    G.lineup=Array(11).fill(null);
+    p.negotiationYear=
+      Number.isFinite(Number(p.negotiationYear))?
+      Number(p.negotiationYear):G.year;
   }
 
   if(!FORMATIONS[G.formation]){
     G.formation="4-3-3";
+  }
+
+  if(!Array.isArray(G.lineup)){
+    G.lineup=Array(11).fill(null);
   }
 
   if(!Number.isFinite(Number(G.sequence))){
@@ -848,15 +785,20 @@ function normalizeSave(){
 
   const maxId=Math.max(
     0,
-    ...G.teams.map(t=>Number(
-      String(t.id).replace(/\D/g,"")
-    )||0),
-    ...G.players.map(p=>Number(
-      String(p.id).replace(/\D/g,"")
-    )||0)
+    ...G.teams.map(t=>
+      Number(String(t.id).replace(/\D/g,""))||0
+    ),
+    ...G.players.map(p=>
+      Number(String(p.id).replace(/\D/g,""))||0
+    )
   );
 
   G.sequence=Math.max(G.sequence,maxId+1);
+
+  // 기존 세이브도 보호기간 규칙 적용
+  if(!G.fired&&G.club){
+    checkManagerRating();
+  }
 }
 
 /* =========================================
@@ -875,17 +817,10 @@ function playerWageDemand(p,years){
     market
   );
 
-  if(p.age<=24){
-    demand*=1.08;
-  }
+  if(p.age<=24)demand*=1.08;
+  if(p.ovr>=85)demand*=1.12;
 
-  if(p.ovr>=85){
-    demand*=1.12;
-  }
-
-  if(years===1){
-    demand*=1.08;
-  }
+  if(years===1)demand*=1.08;
 
   if(years>=4&&p.age<=30){
     demand*=.96;
@@ -926,12 +861,17 @@ function negotiatePlayer(){
     return;
   }
 
-  const years=Number($("playerContractYears").value);
-  const offered=Number($("playerContractWage").value);
+  const years=Number(
+    $("playerContractYears").value
+  );
+
+  const offered=Number(
+    $("playerContractWage").value
+  );
 
   if(!Number.isInteger(years)||
      years<1||years>5){
-    notify("계약 기간은 1~5년이어야 합니다.");
+    notify("추가 계약 기간은 1~5년이어야 합니다.");
     return;
   }
 
@@ -949,7 +889,7 @@ function negotiatePlayer(){
   if(p.negotiationAttempts>=3){
     negotiationResult={
       success:false,
-      message:"이번 시즌 협상 횟수 3회를 모두 사용했습니다. 다음 시즌에 다시 제안할 수 있습니다."
+      message:"이번 시즌 협상 횟수 3회를 모두 사용했습니다."
     };
     render();
     return;
@@ -958,12 +898,14 @@ function negotiatePlayer(){
   const current=wageOf(p);
   const demand=playerWageDemand(p,years);
 
-  const increase=Math.max(0,offered-current);
+  const increase=Math.max(
+    0,offered-current
+  );
 
   if(increase>ownTeam().budget){
     negotiationResult={
       success:false,
-      message:"재계약에 필요한 추가 연봉을 감당할 예산이 부족합니다."
+      message:"추가 연봉을 감당할 예산이 부족합니다."
     };
     render();
     return;
@@ -989,11 +931,13 @@ function negotiatePlayer(){
     const oldYears=p.contract;
     const oldWage=current;
 
+    // 기존 계약 기간에 추가
+    const totalYears=oldYears+years;
+
     ownTeam().budget-=increase;
 
-    p.contract=years;
+    p.contract=totalYears;
     p.wage=Math.round(offered);
-
     p.negotiationAttempts=0;
 
     G.contractHistory.unshift({
@@ -1001,20 +945,25 @@ function negotiatePlayer(){
       player:p.name,
       team:ownTeam().name,
       oldYears,
-      newYears:years,
+      addedYears:years,
+      newYears:totalYears,
       oldWage,
       newWage:p.wage
     });
 
     G.inbox.unshift(
-      `${p.name} 재계약 성공 · ${years}년 · 연봉 ${money(p.wage)}`
+      `${p.name} 재계약 성공 · `+
+      `${oldYears}+${years}=${totalYears}년 · `+
+      `연봉 ${money(p.wage)}`
     );
 
     negotiationResult={
       success:true,
       message:
         `${p.name} 선수가 재계약을 수락했습니다. `+
-        `계약 기간 ${years}년, 연봉 ${money(p.wage)}.`
+        `기존 ${oldYears}년에 ${years}년이 추가되어 `+
+        `총 ${totalYears}년 계약입니다. `+
+        `연봉은 ${money(p.wage)}입니다.`
     };
 
   }else{
@@ -1023,7 +972,8 @@ function negotiatePlayer(){
     )*1000;
 
     G.inbox.unshift(
-      `${p.name} 재계약 제안 거절 · 요구 연봉 ${money(counter)}`
+      `${p.name} 재계약 거절 · `+
+      `요구 연봉 ${money(counter)}`
     );
 
     negotiationResult={
@@ -1044,48 +994,54 @@ function applyPlayerCounter(){
 
   const value=negotiationResult.counter;
 
-  $("playerContractWage").value=value;
-
   negotiationResult=null;
-  renderContractResultOnly();
-}
+  render();
 
-function renderContractResultOnly(){
-  const target=$("negotiationMessage");
-  if(target)target.innerHTML="";
+  if($("playerContractWage")){
+    $("playerContractWage").value=value;
+  }
 }
 
 function contractsView(){
   const p=getPlayer(contractPlayerId);
 
-  const current=p&&p.team===G.club?p:null;
+  const current=p&&p.team===G.club?
+    p:null;
 
   const expiring=squad(G.club)
     .filter(x=>x.contract<=1)
     .sort((a,b)=>a.contract-b.contract);
 
+  const players=squad(G.club)
+    .sort((a,b)=>b.ovr-a.ovr);
+
   return `
   <div class="card">
     <h2>선수 재계약</h2>
+
     <p class="muted">
-      남은 계약 기간과 관계없이 모든 소속 선수에게
-      언제든 재계약을 제안할 수 있습니다.
-      선수당 시즌 최대 3회 협상할 수 있습니다.
+      기존 계약 기간에 새로운 계약 기간을
+      추가하는 방식입니다.
+      선수당 한 시즌 최대 3회 협상할 수 있습니다.
     </p>
 
     <div class="row">
       <select
         id="contractPlayerSelect"
-        onchange="contractPlayerId=this.value;negotiationResult=null;render()"
+        onchange="
+          contractPlayerId=this.value;
+          negotiationResult=null;
+          render()
+        "
       >
         <option value="">선수 선택</option>
-        ${squad(G.club)
-          .sort((a,b)=>b.ovr-a.ovr)
-          .map(x=>`
+
+        ${players.map(x=>`
           <option value="${x.id}"
-          ${current?.id===x.id?"selected":""}>
-          ${escapeHTML(x.name)} · OVR ${x.ovr}
-          · 계약 ${x.contract}년
+            ${current?.id===x.id?"selected":""}>
+            ${escapeHTML(x.name)}
+            · OVR ${x.ovr}
+            · ${x.contract}년
           </option>
         `).join("")}
       </select>
@@ -1117,24 +1073,25 @@ function contractsView(){
       <p>시장 가치: ${money(current.value)}</p>
 
       <p>
-        이번 시즌 협상 횟수:
+        이번 시즌 협상:
         ${current.negotiationYear===G.year?
           current.negotiationAttempts:0}/3
       </p>
 
       ${G.fired?`
-      <p class="bad">경질된 감독은 재계약 협상을 진행할 수 없습니다.</p>
+        <p class="bad">
+          경질된 감독은 협상할 수 없습니다.
+        </p>
       `:`
       <div class="contract-form">
         <label>
-          제안 계약 기간
-          <select id="playerContractYears">
+          추가 계약 기간
+          <select id="playerContractYears"
+            onchange="updatePlayerContractPreview()">
             ${[1,2,3,4,5].map(y=>`
-            <option value="${y}"
-            ${y===Math.min(5,Math.max(1,current.contract))?
-              "selected":""}>
-              ${y}년
-            </option>
+              <option value="${y}">
+                +${y}년
+              </option>
             `).join("")}
           </select>
         </label>
@@ -1146,10 +1103,7 @@ function contractsView(){
             type="number"
             min="10000"
             step="1000"
-            value="${playerWageDemand(
-              current,
-              Math.min(5,Math.max(1,current.contract))
-            )}"
+            value="${playerWageDemand(current,1)}"
           >
         </label>
 
@@ -1157,24 +1111,39 @@ function contractsView(){
           재계약 제안
         </button>
       </div>
+
+      <p id="contractPreview" class="good">
+        기존 ${current.contract}년
+        + 추가 1년
+        = 총 ${current.contract+1}년
+      </p>
       `}
     </div>
     `:`
-    <p class="notice">재계약할 선수를 선택하세요.</p>
+      <p class="notice">
+        재계약할 선수를 선택하세요.
+      </p>
     `}
 
     <div id="negotiationMessage">
-    ${negotiationResult?`
-      <div class="contract-result
-        ${negotiationResult.success?"success":"fail"}">
-        <p>${escapeHTML(negotiationResult.message)}</p>
-        ${negotiationResult.counter&&current?`
-          <button onclick="applyPlayerCounter()">
-            요구 연봉 입력
-          </button>
-        `:""}
-      </div>
-    `:""}
+      ${negotiationResult?`
+        <div class="contract-result
+          ${negotiationResult.success?
+            "success":"fail"}">
+
+          <p>
+            ${escapeHTML(
+              negotiationResult.message
+            )}
+          </p>
+
+          ${negotiationResult.counter&&current?`
+            <button onclick="applyPlayerCounter()">
+              요구 연봉 입력
+            </button>
+          `:""}
+        </div>
+      `:""}
     </div>
   </div>
 
@@ -1182,87 +1151,117 @@ function contractsView(){
     <h3>계약 만료 예정 선수</h3>
 
     ${expiring.length?`
-    <div class="scroll">
-    <table>
-      <tr>
-        <th>선수</th>
-        <th>OVR</th>
-        <th>남은 계약</th>
-        <th>연봉</th>
-        <th>작업</th>
-      </tr>
-      ${expiring.map(x=>`
-      <tr>
-        <td>${escapeHTML(x.name)}</td>
-        <td>${x.ovr}</td>
-        <td class="contract-warning">${x.contract}년</td>
-        <td>${money(wageOf(x))}</td>
-        <td>
-          <button onclick="openPlayerContract('${x.id}')">
-            재계약
-          </button>
-        </td>
-      </tr>
-      `).join("")}
-    </table>
-    </div>
+      <div class="scroll">
+      <table>
+        <tr>
+          <th>선수</th>
+          <th>OVR</th>
+          <th>남은 계약</th>
+          <th>연봉</th>
+          <th>작업</th>
+        </tr>
+
+        ${expiring.map(x=>`
+          <tr>
+            <td>${escapeHTML(x.name)}</td>
+            <td>${x.ovr}</td>
+            <td class="contract-warning">
+              ${x.contract}년
+            </td>
+            <td>${money(wageOf(x))}</td>
+            <td>
+              <button
+                onclick="openPlayerContract('${x.id}')">
+                재계약
+              </button>
+            </td>
+          </tr>
+        `).join("")}
+      </table>
+      </div>
     `:`
-    <p class="muted">이번 시즌 계약 만료 예정 선수가 없습니다.</p>
+      <p class="muted">
+        계약 만료 예정 선수가 없습니다.
+      </p>
     `}
   </div>
 
   <div class="card">
     <h3>구단 연봉 현황</h3>
-    <p>선수단 연간 총연봉:
+
+    <p>
+      연간 총연봉:
       <b>${money(teamPayroll(G.club))}</b>
     </p>
-    <p>현재 이적 예산:
+
+    <p>
+      이적 예산:
       <b>${money(ownTeam().budget)}</b>
     </p>
+
     <p class="muted small">
-      재계약으로 연봉이 인상되면 첫해 증가분을
-      현재 이적 예산에서 차감합니다.
-      기존 연봉보다 낮은 계약을 체결해도
-      예산이 즉시 증가하지는 않습니다.
+      재계약으로 연봉이 인상되면
+      첫해 증가분을 현재 예산에서 차감합니다.
     </p>
   </div>
 
   <div class="card">
     <h3>재계약 기록</h3>
+
     ${(G.contractHistory||[])
       .filter(x=>x.team===ownTeam().name)
       .slice(0,20)
       .map(x=>`
-      <p>
-        ${x.year}년 · ${escapeHTML(x.player)}
-        · ${x.newYears}년
-        · ${money(x.newWage)}
-      </p>
+        <p>
+          ${x.year}년
+          · ${escapeHTML(x.player)}
+          · ${x.oldYears}년
+          → ${x.newYears}년
+          · ${money(x.newWage)}
+        </p>
       `).join("")||
-      '<p class="muted">재계약 기록 없음</p>'}
+      '<p class="muted">기록 없음</p>'}
   </div>
   `;
 }
 
+function updatePlayerContractPreview(){
+  const p=getPlayer(contractPlayerId);
+  if(!p)return;
+
+  const years=Number(
+    $("playerContractYears").value
+  );
+
+  $("contractPreview").textContent=
+    `기존 ${p.contract}년 + 추가 ${years}년`+
+    ` = 총 ${p.contract+years}년`;
+
+  $("playerContractWage").value=
+    playerWageDemand(p,years);
+}
+
 /* =========================================
-   감독 계약 및 이사회
+   감독 경질 및 계약
 ========================================= */
 
 function fireManager(reason){
   if(G.fired)return;
+
+  const team=ownTeam();
 
   G.fired=true;
   G.firingReason=reason;
   G.contract=0;
 
   G.inbox.unshift(
-    `${ownTeam().name} 이사회: ${reason}`
+    `${team.name} 이사회: ${reason}`
   );
 
   G.managerContractHistory.unshift({
     year:G.year,
-    club:ownTeam().name,
-    result:"경질",
+    club:team.name,
+    result:"경질 또는 계약 종료",
     reason,
     rating:G.rating,
     appointmentMatches:G.appointmentMatches
@@ -1271,31 +1270,24 @@ function fireManager(reason){
   saveGame();
 }
 
-/*
-  보호기간:
-  리그 12경기 미만 → 0점 미만 경질
-
-  보호기간 종료:
-  40점 미만 경질
-*/
-
 function checkManagerRating(){
   if(G.fired)return false;
 
+  // 첫 12경기까지 보호기간
   if(isManagerProtected()){
     if(G.rating<0){
       fireManager(
-        `부임 후 ${G.appointmentMatches}경기를 치른 `+
-        `보호기간 중 감독 평점이 ${ratingText()}점으로 `+
-        `0점 미만까지 하락해 즉시 경질되었습니다.`
+        `부임 후 ${G.appointmentMatches}경기째 `+
+        `감독 평점이 ${ratingText()}점으로 `+
+        `0점 미만이 되어 경질되었습니다.`
       );
-
       return true;
     }
 
     return false;
   }
 
+  // 13경기째부터 40점 미만 경질
   if(G.rating<MANAGER_FIRING_RATING){
     fireManager(
       `부임 후 ${G.appointmentMatches}경기를 치렀으며 `+
@@ -1342,7 +1334,9 @@ function managerRenewalChance(years){
     chance-=.08;
   }
 
-  return Math.max(.05,Math.min(.99,chance));
+  return Math.max(
+    .05,Math.min(.99,chance)
+  );
 }
 
 function renewManager(){
@@ -1357,38 +1351,41 @@ function renewManager(){
 
   if(!Number.isInteger(years)||
      years<1||years>5){
-    notify("계약 기간은 1~5년이어야 합니다.");
+    notify("추가 계약 기간은 1~5년이어야 합니다.");
     return;
   }
 
   const chance=managerRenewalChance(years);
-
   const accepted=Math.random()<chance;
 
   if(accepted){
     const previous=G.contract;
 
-    G.contract=years;
+    // 기존 감독 계약에 기간 추가
+    G.contract+=years;
 
     G.managerContractHistory.unshift({
       year:G.year,
       club:ownTeam().name,
       result:"재계약 성공",
       previous,
-      years,
+      addedYears:years,
+      years:G.contract,
       rating:G.rating
     });
 
     G.inbox.unshift(
-      `${ownTeam().name} 이사회가 감독 ${G.manager}의 `+
-      `${years}년 재계약을 승인했습니다.`
+      `${ownTeam().name} 이사회가 감독 `+
+      `${G.manager}의 계약을 `+
+      `${previous}년에서 ${G.contract}년으로 연장했습니다.`
     );
 
     managerNegotiationResult={
       success:true,
       message:
-        `이사회가 ${years}년 재계약을 승인했습니다. `+
-        `감독 계약이 ${years}시즌으로 갱신되었습니다.`
+        `재계약 승인! 기존 ${previous}년에 `+
+        `${years}년이 추가되어 `+
+        `총 ${G.contract}시즌 계약입니다.`
     };
 
   }else{
@@ -1401,21 +1398,377 @@ function renewManager(){
     });
 
     G.inbox.unshift(
-      `${ownTeam().name} 이사회가 감독의 `+
-      `${years}년 재계약 신청을 거절했습니다.`
+      `${ownTeam().name} 이사회가 `+
+      `${years}년 계약 연장 신청을 거절했습니다.`
     );
 
     managerNegotiationResult={
       success:false,
       message:
-        "이사회가 재계약 신청을 거절했습니다. "+
-        "현재 성적과 감독 평점이 충분하지 않다고 판단했습니다. "+
-        "계약이 남아 있다면 다시 신청할 수 있습니다."
+        "이사회가 계약 연장을 거절했습니다. "+
+        "기존 계약 기간은 유지됩니다."
     };
   }
 
   saveGame();
   render();
+}
+
+/* =========================================
+   AI 구단 선수 평가
+========================================= */
+
+function aiSquadRank(p){
+  const players=squad(p.team)
+    .sort((a,b)=>b.ovr-a.ovr);
+
+  return players.findIndex(
+    x=>x.id===p.id
+  )+1;
+}
+
+function aiRenewalChance(p){
+  const t=getTeam(p.team);
+  if(!t)return 0;
+
+  const rank=aiSquadRank(p);
+
+  let chance=.25;
+
+  // 능력치와 팀 전력 비교
+  const difference=p.ovr-t.strength;
+
+  if(difference>=8)chance+=.35;
+  else if(difference>=3)chance+=.25;
+  else if(difference>=-3)chance+=.12;
+  else if(difference<=-12)chance-=.15;
+
+  // 팀 내 기여도
+  if(rank<=11)chance+=.2;
+  else if(rank<=18)chance+=.1;
+  else if(rank>25)chance-=.12;
+
+  // 나이
+  if(p.age<=23)chance+=.15;
+  else if(p.age<=28)chance+=.08;
+  else if(p.age>=34)chance-=.25;
+  else if(p.age>=31)chance-=.12;
+
+  // 유망주 가치
+  if(p.age<=21&&p.ovr>=65){
+    chance+=.12;
+  }
+
+  // 선수단이 부족하면 유지 우선
+  if(squad(t.id).length<18){
+    chance+=.2;
+  }
+
+  return Math.max(
+    .03,Math.min(.97,chance)
+  );
+}
+
+/* =========================================
+   AI 자동 재계약
+========================================= */
+
+function processAIRenewals(){
+  let renewed=0;
+  let rejected=0;
+
+  const candidates=G.players.filter(p=>
+    p.team!==null&&
+    p.team!==G.club&&
+    p.contract<=1
+  );
+
+  // 팀별 주요 선수 순으로 협상
+  candidates.sort((a,b)=>b.ovr-a.ovr);
+
+  for(const p of candidates){
+    const t=getTeam(p.team);
+    if(!t)continue;
+
+    const chance=aiRenewalChance(p);
+
+    if(Math.random()>=chance){
+      rejected++;
+      continue;
+    }
+
+    let years;
+
+    if(p.age<=23){
+      years=random(3,5);
+    }else if(p.age<=29){
+      years=random(2,4);
+    }else if(p.age<=33){
+      years=random(1,3);
+    }else{
+      years=random(1,2);
+    }
+
+    const newWage=Math.round(
+      playerWageDemand(p,years)*
+      (1+Math.random()*.12)
+    );
+
+    const increase=Math.max(
+      0,newWage-wageOf(p)
+    );
+
+    if(increase>t.budget){
+      rejected++;
+      continue;
+    }
+
+    const oldYears=p.contract;
+
+    t.budget-=increase;
+
+    // AI도 기존 계약에 기간 추가
+    p.contract+=years;
+    p.wage=newWage;
+
+    G.contractHistory.unshift({
+      year:G.year,
+      player:p.name,
+      team:t.name,
+      oldYears,
+      addedYears:years,
+      newYears:p.contract,
+      newWage,
+      ai:true
+    });
+
+    renewed++;
+  }
+
+  G.inbox.unshift(
+    `AI 구단 계약 협상: `+
+    `${renewed}명 재계약, `+
+    `${rejected}명 재계약 미체결`
+  );
+
+  return {renewed,rejected};
+}
+
+/* =========================================
+   AI 이적시장
+========================================= */
+
+function aiPlayerSaleChance(p,t){
+  const rank=aiSquadRank(p);
+
+  let chance=.04;
+
+  if(rank>18)chance+=.12;
+  if(rank>25)chance+=.12;
+
+  if(p.age>=32)chance+=.12;
+  if(p.age>=35)chance+=.15;
+
+  if(p.ovr<t.strength-8){
+    chance+=.12;
+  }
+
+  if(p.age<=23&&p.ovr>=t.strength){
+    chance-=.08;
+  }
+
+  if(p.contract<=1){
+    chance+=.08;
+  }
+
+  return Math.max(
+    .01,Math.min(.6,chance)
+  );
+}
+
+function aiTransferFee(p){
+  const multiplier=
+    .85+Math.random()*.5;
+
+  return Math.round(
+    p.value*multiplier
+  );
+}
+
+function aiBuyerScore(p,t){
+  let score=0;
+
+  const difference=p.ovr-t.strength;
+
+  if(difference>=5)score+=35;
+  else if(difference>=0)score+=25;
+  else if(difference>=-5)score+=15;
+  else score+=5;
+
+  if(p.age<=23)score+=15;
+  else if(p.age<=29)score+=10;
+  else if(p.age>=34)score-=10;
+
+  const samePosition=squad(t.id)
+    .filter(x=>x.pos===p.pos);
+
+  if(samePosition.length===0)score+=30;
+  else if(samePosition.length===1)score+=20;
+  else if(samePosition.length===2)score+=10;
+
+  if(squad(t.id).length<20){
+    score+=15;
+  }
+
+  return score;
+}
+
+function aiBuyPlayer(p,buyer,fee){
+  const seller=p.team===null?
+    null:getTeam(p.team);
+
+  const wage=wageOf(p);
+
+  if(buyer.budget<fee+wage){
+    return false;
+  }
+
+  buyer.budget-=fee+wage;
+
+  if(seller){
+    seller.budget+=fee;
+  }
+
+  const oldTeam=seller?
+    seller.name:"자유계약";
+
+  p.team=buyer.id;
+  p.contract=random(2,4);
+  p.negotiationAttempts=0;
+  p.negotiationYear=G.year;
+
+  const record=
+    `${p.name}: ${oldTeam} → `+
+    `${buyer.name} · ${money(fee)}`;
+
+  G.transfers.unshift(record);
+
+  G.aiTransferHistory.unshift({
+    year:G.year,
+    player:p.name,
+    from:oldTeam,
+    to:buyer.name,
+    fee
+  });
+
+  return true;
+}
+
+function processAITransfers(){
+  let sales=0;
+  let freeSignings=0;
+
+  // AI 구단끼리 선수 판매 및 영입
+  const candidates=G.players
+    .filter(p=>
+      p.team!==null&&
+      p.team!==G.club
+    )
+    .sort(()=>Math.random()-.5);
+
+  for(const p of candidates){
+    const seller=getTeam(p.team);
+    if(!seller)continue;
+
+    // 최소 선수단 규모 유지
+    if(squad(seller.id).length<=16){
+      continue;
+    }
+
+    const chance=aiPlayerSaleChance(
+      p,seller
+    );
+
+    if(Math.random()>=chance){
+      continue;
+    }
+
+    const fee=aiTransferFee(p);
+
+    const buyers=G.teams
+      .filter(t=>
+        t.id!==seller.id&&
+        t.id!==G.club&&
+        t.budget>=fee+wageOf(p)&&
+        squad(t.id).length<35
+      )
+      .map(t=>({
+        team:t,
+        score:aiBuyerScore(p,t)
+      }))
+      .filter(x=>x.score>=20)
+      .sort((a,b)=>b.score-a.score);
+
+    if(!buyers.length)continue;
+
+    // 상위 후보 중 무작위 선택
+    const chosen=pick(
+      buyers.slice(0,Math.min(5,buyers.length))
+    );
+
+    if(aiBuyPlayer(
+      p,chosen.team,fee
+    )){
+      sales++;
+    }
+  }
+
+  // 자유계약 선수 영입
+  const freeAgents=G.players
+    .filter(p=>p.team===null)
+    .sort((a,b)=>b.ovr-a.ovr);
+
+  for(const p of freeAgents){
+    const buyers=G.teams
+      .filter(t=>
+        t.id!==G.club&&
+        squad(t.id).length<30&&
+        t.budget>=wageOf(p)
+      )
+      .map(t=>({
+        team:t,
+        score:aiBuyerScore(p,t)
+      }))
+      .filter(x=>x.score>=25)
+      .sort((a,b)=>b.score-a.score);
+
+    if(!buyers.length)continue;
+
+    const chance=
+      p.age<=30?.45:.25;
+
+    if(Math.random()>=chance){
+      continue;
+    }
+
+    const chosen=pick(
+      buyers.slice(0,Math.min(5,buyers.length))
+    );
+
+    if(aiBuyPlayer(
+      p,chosen.team,0
+    )){
+      freeSignings++;
+    }
+  }
+
+  G.inbox.unshift(
+    `AI 이적시장: `+
+    `구단 간 이적 ${sales}건, `+
+    `자유계약 영입 ${freeSignings}건`
+  );
+
+  return {sales,freeSignings};
 }
 
 /* =========================================
@@ -1438,6 +1791,7 @@ function initialize(){
     inbox:[],
     contractHistory:[],
     managerContractHistory:[],
+    aiTransferHistory:[],
     rating:65,
     contract:3,
     fired:false,
@@ -1704,11 +2058,6 @@ function applyFixture(f){
   return [a,b];
 }
 
-/*
-  경기 후 감독 평점 처리
-  리그 경기만 보호기간 경기 수에 반영
-*/
-
 function playMatch(){
   if(G.fired){
     notify("경질된 감독은 경기를 진행할 수 없습니다.");
@@ -1771,7 +2120,7 @@ function playMatch(){
       `현재 평점: ${ratingText()}점\n`+
       `부임 후 리그 경기: ${G.appointmentMatches}경기\n\n`+
       G.firingReason+"\n\n"+
-      "감독 경력 메뉴에서 다른 구단을 선택할 수 있습니다."
+      "감독 경력 메뉴에서 다른 구단을 선택하세요."
     );
   }
 }
@@ -2015,7 +2364,7 @@ function changeSetting(key,value){
 }
 
 /* =========================================
-   이적시장
+   사용자 이적시장
 ========================================= */
 
 function buyPlayer(id){
@@ -2028,9 +2377,7 @@ function buyPlayer(id){
 
   if(!p||p.team===G.club)return;
 
-  const isFree=p.team===null;
-
-  if(isFree){
+  if(p.team===null){
     signFreeAgent(id);
     return;
   }
@@ -2099,6 +2446,7 @@ function buyPlayer(id){
     `· 연봉 ${money(annualWage)}`
   );
 
+  autoLineup();
   saveGame();
   render();
 }
@@ -2273,9 +2621,7 @@ function endSeason(){
     points:t.points
   });
 
-  /*
-    승강제
-  */
+  /* 승강제 */
 
   const moves=[];
 
@@ -2341,9 +2687,11 @@ function endSeason(){
     m.promoted.tier=m.upperTier;
   }
 
-  /*
-    선수 계약 및 성장
-  */
+  /* AI 자동 재계약 */
+
+  const aiRenewal=processAIRenewals();
+
+  /* 선수 성장 및 계약 만료 */
 
   const expired=[];
 
@@ -2389,9 +2737,7 @@ function endSeason(){
     p.negotiationYear=G.year+1;
   }
 
-  /*
-    다음 시즌
-  */
+  /* 다음 시즌 */
 
   G.year++;
 
@@ -2424,6 +2770,10 @@ function endSeason(){
       random(5,30)*1000000;
   }
 
+  /* AI 구단 이적시장 */
+
+  const aiMarket=processAITransfers();
+
   const userExpired=expired.filter(
     x=>x.userClub
   );
@@ -2435,13 +2785,7 @@ function endSeason(){
     );
   }
 
-  /*
-    감독 계약
-    자동 재계약 금지
-
-    시즌이 바뀌어도
-    부임 보호기간 경기 수는 초기화하지 않음
-  */
+  /* 감독 계약 */
 
   G.contract=Math.max(
     0,G.contract-1
@@ -2449,7 +2793,8 @@ function endSeason(){
 
   if(G.contract===0){
     fireManager(
-      "감독 계약이 만료되었으며 재계약이 체결되지 않아 구단을 떠나게 되었습니다."
+      "감독 계약이 만료되었으며 "+
+      "재계약이 체결되지 않아 구단을 떠나게 되었습니다."
     );
   }else{
     G.rating=Math.min(
@@ -2458,12 +2803,20 @@ function endSeason(){
     );
   }
 
+  // 시즌이 바뀌면 연승·연패 초기화
+  // 부임 보호기간 경기 수는 유지
+  G.winStreak=0;
+  G.lossStreak=0;
+
   createSeason();
   autoLineup();
 
   G.inbox.unshift(
     `${G.year}년 새 시즌 시작. `+
-    `계약 만료 선수 ${expired.length}명 자유계약 전환.`
+    `계약 만료 ${expired.length}명 · `+
+    `AI 재계약 ${aiRenewal.renewed}명 · `+
+    `AI 이적 ${aiMarket.sales}건 · `+
+    `자유계약 영입 ${aiMarket.freeSignings}건`
   );
 
   saveGame();
@@ -2515,7 +2868,7 @@ function showSlots(){
 }
 
 /* =========================================
-   GitHub 선수 데이터 불러오기
+   GitHub 선수 데이터
 ========================================= */
 
 async function newGame(n){
@@ -2629,7 +2982,7 @@ function loadGame(n){
   normalizeSave();
 
   slotScreen=false;
-  page="home";
+  page=G.club?"home":"start";
 
   render();
 }
@@ -2849,14 +3202,13 @@ function startCareer(){
   G.firingReason="";
 
   resetManagerPerformance();
-
   autoLineup();
 
   page="home";
 
   G.inbox.unshift(
     `${ownTeam().name} 감독으로 부임했습니다. `+
-    `첫 리그 ${MANAGER_GRACE_MATCHES}경기는 경질 보호기간입니다.`
+    `첫 리그 12경기까지 보호기간입니다.`
   );
 
   saveGame();
@@ -2874,11 +3226,6 @@ function changeClub(){
   G.rating=60;
   G.contract=3;
 
-  /*
-    새 구단 부임:
-    보호기간 및 연속 경기 기록 초기화
-  */
-
   resetManagerPerformance();
 
   managerNegotiationResult=null;
@@ -2889,8 +3236,8 @@ function changeClub(){
 
   G.inbox.unshift(
     `${ownTeam().name} 감독으로 부임했습니다. `+
-    `첫 리그 ${MANAGER_GRACE_MATCHES}경기 동안 `+
-    `0점 미만이 아닌 이상 경질되지 않습니다.`
+    `첫 리그 12경기까지 `+
+    `평점 0점 미만이 아닌 이상 경질되지 않습니다.`
   );
 
   saveGame();
@@ -2898,7 +3245,7 @@ function changeClub(){
 }
 
 /* =========================================
-   정렬
+   선수 정렬
 ========================================= */
 
 function setSort(field){
@@ -2951,7 +3298,7 @@ function playerTable(list,actions=true){
         ["ovr","OVR"]
       ].map(([key,label])=>`
         <th class="sortable"
-        onclick="setSort('${key}')">
+          onclick="setSort('${key}')">
           ${label}
           ${sortField===key?
             (sortAscending?"▲":"▼"):"↕"}
@@ -3058,9 +3405,11 @@ function slotsView(){
 
         ${data?`
           <p>${escapeHTML(data.manager)}</p>
+
           <p>${escapeHTML(
             t?.name||"구단 미정"
           )}</p>
+
           <p>
             ${data.year}/
             ${String(data.year+1).slice(2)}
@@ -3081,6 +3430,7 @@ function slotsView(){
           </button>
         `:`
           <p class="muted">비어 있음</p>
+
           <button onclick="newGame(${n})">
             새 게임 하기
           </button>
@@ -3136,7 +3486,6 @@ function startView(){
 
 function homeView(){
   const t=ownTeam();
-
   const next=nextFixture();
 
   const ranking=leagueTable(
@@ -3162,13 +3511,14 @@ function homeView(){
       }">
         ${protectedNow?
           `부임 보호기간 · ${graceRemaining()}경기 남음`:
-          "40점 미만 즉시 강제 경질"}
+          "40점 미만 강제 경질"}
       </p>
     </div>
 
     <div class="card">
       <div class="muted">리그 순위</div>
       <div class="big">${ranking}위</div>
+
       <p>
         ${t.w}승 ${t.d}무 ${t.l}패
         · ${t.points}점
@@ -3177,9 +3527,11 @@ function homeView(){
 
     <div class="card">
       <div class="muted">이적 예산</div>
+
       <div class="big">
         ${money(t.budget)}
       </div>
+
       <p>
         등록 선수 ${squad(t.id).length}명
       </p>
@@ -3187,9 +3539,11 @@ function homeView(){
 
     <div class="card">
       <div class="muted">선수단 연간 총연봉</div>
+
       <div class="big">
         ${money(teamPayroll(G.club))}
       </div>
+
       <button class="alt"
         onclick="setPage('contracts')">
         선수 재계약
@@ -3224,7 +3578,7 @@ function homeView(){
 
       <div>
         <div class="muted">감독 상태</div>
-        <p class="good">
+        <p class="${G.fired?"bad":"good"}">
           ${managerStatusText()}
         </p>
       </div>
@@ -3238,9 +3592,8 @@ function homeView(){
 
     ${protectedNow?`
       <p class="notice">
-        부임 후 첫 12경기는 보호기간입니다.
+        부임 후 첫 12경기까지 보호기간입니다.
         현재 ${G.appointmentMatches}/12경기 진행.
-        남은 ${graceRemaining()}경기 동안은
         평점이 0점 미만으로 내려가지 않는 한
         경질되지 않습니다.
       </p>
@@ -3304,10 +3657,12 @@ function homeView(){
   ${!G.fired?`
   <div class="card">
     <h3>감독 계약</h3>
+
     <p>
       현재 계약: ${G.contract}시즌
       · 평점 ${ratingText()}점
     </p>
+
     <button class="alt"
       onclick="setPage('career')">
       이사회에 재계약 신청
@@ -3317,6 +3672,7 @@ function homeView(){
 
   <div class="card">
     <h3>최근 경기</h3>
+
     ${G.results.slice(0,8)
       .map(x=>`
         <p>${escapeHTML(x)}</p>
@@ -3325,6 +3681,7 @@ function homeView(){
 
   <div class="card">
     <h3>구단 소식</h3>
+
     ${G.inbox.slice(0,8)
       .map(x=>`
         <p>${escapeHTML(x)}</p>
@@ -3482,6 +3839,7 @@ function tacticsView(){
       `).join("")}
 
       <button
+        ${G.fired?"disabled":""}
         onclick="autoLineup();saveGame();render()">
         자동 선발
       </button>
@@ -3650,7 +4008,7 @@ function leagueView(){
 }
 
 /* =========================================
-   이적시장
+   이적시장 화면
 ========================================= */
 
 function updateTransferSearch(){
@@ -3674,7 +4032,9 @@ function transfersView(){
     )
     .filter(p=>
       !selectedClub||
-      p.team===selectedClub
+      (selectedClub==="FREE"?
+        p.team===null:
+        p.team===selectedClub)
     )
     .slice(0,150);
 
@@ -3738,17 +4098,13 @@ function transfersView(){
       (최대 150명)
     </p>
 
-    ${playerTable(
-      selectedClub==="FREE"?
-        list.filter(p=>p.team===null):
-        list
-    )}
+    ${playerTable(list)}
   </div>
 
   <div class="card">
     <h3>이적 기록</h3>
 
-    ${G.transfers.slice(0,20)
+    ${G.transfers.slice(0,30)
       .map(x=>`
         <p>${escapeHTML(x)}</p>
       `).join("")||
@@ -3830,7 +4186,7 @@ function cupsView(){
 }
 
 /* =========================================
-   감독 경력 및 감독 재계약
+   감독 경력 화면
 ========================================= */
 
 function careerView(){
@@ -3882,14 +4238,14 @@ function careerView(){
       <p class="contract-warning">
         현재 부임 보호기간입니다.
         ${graceRemaining()}경기 남았습니다.
-        보호기간에는 평점이 0점 미만일 때만
-        즉시 경질됩니다.
+        첫 12경기까지는 평점이
+        0점 미만일 때만 경질됩니다.
       </p>
     `:`
       <p class="contract-warning">
         부임 보호기간이 종료되었습니다.
         감독 평점이 40.0점 미만이면
-        계약 기간과 관계없이 즉시 강제 경질됩니다.
+        계약 기간과 관계없이 경질됩니다.
       </p>
     `}
 
@@ -3918,8 +4274,12 @@ function careerView(){
     `:`
       <p>
         현재 계약이 몇 시즌 남았든
-        언제든 이사회에 재계약을
-        신청할 수 있습니다.
+        이사회에 계약 연장을 신청할 수 있습니다.
+      </p>
+
+      <p>
+        현재 계약:
+        <b>${G.contract}시즌</b>
       </p>
 
       <p>
@@ -3931,18 +4291,18 @@ function careerView(){
         감독 평점이 높을수록 이사회가
         재계약을 승인할 가능성이 높습니다.
         긴 계약일수록 승인 기준이
-        조금 더 까다로워집니다.
+        까다로워집니다.
       </p>
 
       <div class="contract-form">
         <label>
-          희망 계약 기간
+          추가 계약 기간
 
-          <select id="managerRenewYears">
+          <select id="managerRenewYears"
+            onchange="updateManagerContractPreview()">
             ${[1,2,3,4,5].map(y=>`
-              <option value="${y}"
-                ${y===3?"selected":""}>
-                ${y}년
+              <option value="${y}">
+                +${y}년
               </option>
             `).join("")}
           </select>
@@ -3952,6 +4312,12 @@ function careerView(){
           이사회에 재계약 신청
         </button>
       </div>
+
+      <p id="managerContractPreview" class="good">
+        기존 ${G.contract}년
+        + 추가 1년
+        = 총 ${G.contract+1}년
+      </p>
 
       ${managerNegotiationResult?`
         <div class="contract-result
@@ -3972,8 +4338,9 @@ function careerView(){
     <h3>다른 구단으로 이동</h3>
 
     <p class="muted small">
-      새 구단에 부임하면 감독 평점은 60.0점으로
-      설정되며, 부임 보호기간 12경기와
+      새 구단에 부임하면 감독 평점은
+      60.0점으로 설정되며,
+      부임 보호기간 12경기와
       연승·연패 기록이 새로 시작됩니다.
     </p>
 
@@ -4007,7 +4374,7 @@ function careerView(){
         · ${escapeHTML(x.club)}
         · ${escapeHTML(x.result)}
         ${x.years?
-          " · "+x.years+"년":""}
+          " · 총 "+x.years+"년":""}
       </p>
       `).join("")||
       '<p class="muted">기록 없음</p>'}
@@ -4026,6 +4393,16 @@ function careerView(){
     `).join("")||
     "시즌 기록 없음"}
   </div>`;
+}
+
+function updateManagerContractPreview(){
+  const years=Number(
+    $("managerRenewYears").value
+  );
+
+  $("managerContractPreview").textContent=
+    `기존 ${G.contract}년 + 추가 ${years}년`+
+    ` = 총 ${G.contract+years}년`;
 }
 
 /* =========================================
@@ -4154,7 +4531,91 @@ function dataView(){
 }
 
 /* =========================================
-   페이지 이동 및 화면 렌더링
+   AI 이적 기록 화면
+========================================= */
+
+function aiMarketView(){
+  const records=G.aiTransferHistory||[];
+
+  return `
+  <div class="card">
+    <h2>AI 구단 이적시장</h2>
+
+    <p class="notice">
+      AI 구단은 시즌이 끝날 때
+      선수의 능력치, 나이, 팀 내 기여도,
+      포지션과 예산을 고려해
+      자동으로 재계약 및 이적 활동을 진행합니다.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="muted">
+          AI 구단 간 이적 기록
+        </div>
+        <div class="big">
+          ${records.filter(x=>x.fee>0).length}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="muted">
+          AI 자유계약 영입
+        </div>
+        <div class="big">
+          ${records.filter(x=>x.fee===0).length}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="muted">
+          AI 재계약 기록
+        </div>
+        <div class="big">
+          ${G.contractHistory.filter(x=>x.ai).length}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>최근 AI 이적</h3>
+
+    ${records.slice(0,100).map(x=>`
+      <p>
+        ${x.year}년
+        · ${escapeHTML(x.player)}
+        · ${escapeHTML(x.from)}
+        →
+        ${escapeHTML(x.to)}
+        · ${money(x.fee)}
+      </p>
+    `).join("")||
+    '<p class="muted">아직 AI 이적 기록이 없습니다.</p>'}
+  </div>
+
+  <div class="card">
+    <h3>최근 AI 재계약</h3>
+
+    ${G.contractHistory
+      .filter(x=>x.ai)
+      .slice(0,100)
+      .map(x=>`
+      <p>
+        ${x.year}년
+        · ${escapeHTML(x.team)}
+        · ${escapeHTML(x.player)}
+        · ${x.oldYears}년
+        → ${x.newYears}년
+        · ${money(x.newWage)}
+      </p>
+    `).join("")||
+    '<p class="muted">아직 AI 재계약 기록이 없습니다.</p>'}
+  </div>`;
+}
+
+/* =========================================
+   페이지 이동
 ========================================= */
 
 function setPage(p){
@@ -4167,6 +4628,10 @@ function setPage(p){
 
   render();
 }
+
+/* =========================================
+   렌더링
+========================================= */
 
 function render(){
   if(slotScreen){
@@ -4205,6 +4670,7 @@ function render(){
     fixtures:"경기 일정",
     league:"리그 순위",
     transfers:"이적시장",
+    aiMarket:"AI 이적 기록",
     cups:"컵대회",
     career:"감독 경력",
     data:"선수 데이터"
@@ -4260,13 +4726,14 @@ function render(){
     fixtures:fixturesView,
     league:leagueView,
     transfers:transfersView,
+    aiMarket:aiMarketView,
     cups:cupsView,
     career:careerView,
     data:dataView
   };
 
   $("app").innerHTML=
-    views[page]();
+    (views[page]||homeView)();
 }
 
 /* =========================================
